@@ -307,6 +307,10 @@ gb_internal Ast *clone_ast(Ast *node, AstFile *f) {
 	case Ast_UnaryExpr:
 		n->UnaryExpr.expr = clone_ast(n->UnaryExpr.expr, f);
 		break;
+	case Ast_PipeExpr:
+		n->BinaryExpr.left  = clone_ast(n->BinaryExpr.left, f);
+		n->BinaryExpr.right = clone_ast(n->BinaryExpr.right, f);
+		break;
 	case Ast_BinaryExpr:
 		n->BinaryExpr.left  = clone_ast(n->BinaryExpr.left, f);
 		n->BinaryExpr.right = clone_ast(n->BinaryExpr.right, f);
@@ -772,6 +776,27 @@ gb_internal Ast *ast_unary_expr(AstFile *f, Token op, Ast *expr) {
 	return result;
 }
 
+gb_internal Ast *ast_pipe_expr(AstFile *f, Token op, Ast *left, Ast *right)
+{
+	Ast *result = alloc_ast_node(f, Ast_PipeExpr);
+
+	if (left == nullptr)
+	{
+		syntax_error(op, "No lhs expression for the binary expression '%.*s'", LIT(op.string));
+		left = ast_bad_expr(f, op, op);
+	}
+	if (right == nullptr)
+	{
+		syntax_error(op, "No rhs expression for the binary expression '%.*s'", LIT(op.string));
+		right = ast_bad_expr(f, op, op);
+	}
+
+	result->PipeExpr.op = op;
+	result->PipeExpr.left = left;
+	result->PipeExpr.right = right;
+
+	return result;
+}
 
 gb_internal Ast *ast_binary_expr(AstFile *f, Token op, Ast *left, Ast *right) {
 	Ast *result = alloc_ast_node(f, Ast_BinaryExpr);
@@ -4237,6 +4262,8 @@ gb_internal i32 token_precedence(AstFile *f, TokenKind t) {
 	case Token_Shl:
 	case Token_Shr:
 		return 7;
+	case Token_Pipe:
+		return 8;
 	}
 	return 0;
 }
@@ -4285,7 +4312,35 @@ gb_internal Ast *parse_binary_expr(AstFile *f, bool lhs, i32 prec_in) {
 				expr = ast_ternary_when_expr(f, x, cond, y);
 				break;
 			}
-		} else {
+		} else if (op.kind == Token_Pipe)
+		{
+			Ast *right = parse_binary_expr(f, false, op_prec+1);
+			#if 0
+				gb_printf("Parsing a Pipe: (%.*s => %.*s)\n", LIT(ast_strings[expr->kind]),LIT(ast_strings[right->kind]));
+			#endif
+			if (right == nullptr || right->kind != Ast_CallExpr) {
+				error(op, "Expected a call expression on the right-hand side of the binary operator '%.*s'", LIT(op.string));
+				expr = right;
+			}
+			else
+			{
+				// NOTE(kozi): PIPE HACK
+				//ast_node(call, CallExpr, right);
+
+				auto call = right;
+				auto newLen = call->CallExpr.args.count+1;
+				
+				Array<Ast *> newArgs = array_make<Ast *>(ast_allocator(f), 0, newLen);
+
+				array_add(&newArgs, expr);
+				array_add_elems(&newArgs, call->CallExpr.args.data, call->CallExpr.args.count);
+				call->CallExpr.args = slice_from_array(newArgs);
+				
+				expr = call;
+			}
+		}
+		else 
+		{
 			Ast *right = parse_binary_expr(f, false, op_prec+1);
 			if (right == nullptr) {
 				syntax_error(op, "Expected expression on the right-hand side of the binary operator '%.*s'", LIT(op.string));

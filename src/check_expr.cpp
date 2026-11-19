@@ -13151,6 +13151,12 @@ end:;
 	return kind;
 }
 
+// NOTE(kozi): Kept here in case a proper impl happens
+gb_internal ExprKind check_pipe_expr(CheckerContext *c, Operand *o, Ast *node, Type *type_hint)
+{
+	GB_PANIC("Unreachable")
+}
+
 gb_internal ExprKind check_selector_call_expr(CheckerContext *c, Operand *o, Ast *node, Type *type_hint) {
 	ast_node(se, SelectorCallExpr, node);
 	// IMPORTANT NOTE(bill, 2020-05-22): This is a complete hack to get a shorthand which is extremely useful for vtables
@@ -14008,6 +14014,11 @@ gb_internal ExprKind check_expr_base_internal(CheckerContext *c, Operand *o, Ast
 
 	case_ast_node(se, SelectorCallExpr, node);
 		return check_selector_call_expr(c, o, node, type_hint);
+	case_end;
+
+	//NOTE(kozi): Unused
+	case_ast_node(pe, PipeExpr, node);
+		return check_pipe_expr(c, o, node, type_hint);
 	case_end;
 
 	case_ast_node(ise, ImplicitSelectorExpr, node);

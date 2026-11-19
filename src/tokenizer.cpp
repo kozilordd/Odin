@@ -36,6 +36,7 @@ TOKEN_KIND(Token__OperatorBegin, ""), \
 	TOKEN_KIND(Token_CmpAnd,   "&&"), \
 	TOKEN_KIND(Token_CmpOr,    "||"), \
 	TOKEN_KIND(Token_MulMul,   "**"), \
+	TOKEN_KIND(Token_Pipe,     "=>"), \
 \
 TOKEN_KIND(Token__AssignOpBegin, ""), \
 	TOKEN_KIND(Token_AddEq,    "+="), \
@@ -997,6 +998,10 @@ gb_internal void tokenizer_get_token(Tokenizer *t, Token *token, int repeat=0) {
 			if (t->curr_rune == '=') {
 				advance_to_next_rune(t);
 				token->kind = Token_CmpEq;
+			}
+			else if (t->curr_rune == '>'){
+				advance_to_next_rune(t);
+				token->kind = Token_Pipe;
 			}
 			break;
 		case '~':

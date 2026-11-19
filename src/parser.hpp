@@ -585,6 +585,7 @@ AST_KIND(_ExprBegin,  "",  bool) \
 	AST_KIND(TagExpr,      "tag expression",         struct { Token token, name; Ast *expr; }) \
 	AST_KIND(UnaryExpr,    "unary expression",       struct { Token op; Ast *expr; }) \
 	AST_KIND(BinaryExpr,   "binary expression",      struct { Token op; Ast *left, *right; } ) \
+	AST_KIND(PipeExpr,     "pipe expression",        struct { Token op; Ast *left, *right; } ) \
 	AST_KIND(ParenExpr,    "parentheses expression", struct { Ast *expr; Token open, close; }) \
 	AST_KIND(SelectorExpr, "selector expression",    struct { \
 		Token token; \

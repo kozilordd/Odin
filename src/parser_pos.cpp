@@ -37,6 +37,7 @@ gb_internal Token ast_token(Ast *node) {
 	case Ast_BadExpr:       return node->BadExpr.begin;
 	case Ast_UnaryExpr:     return node->UnaryExpr.op;
 	case Ast_BinaryExpr:    return ast_token(node->BinaryExpr.left);
+	case Ast_PipeExpr:      return ast_token(node->PipeExpr.left);
 	case Ast_ParenExpr:     return node->ParenExpr.open;
 	case Ast_CallExpr:      return ast_token(node->CallExpr.proc);
 	case Ast_SelectorExpr:
@@ -234,6 +235,7 @@ Token ast_end_token(Ast *node) {
 		}
 		return node->UnaryExpr.op;
 	case Ast_BinaryExpr:    return ast_end_token(node->BinaryExpr.right);
+	case Ast_PipeExpr:      return ast_end_token(node->PipeExpr.right);
 	case Ast_ParenExpr:     return node->ParenExpr.close;
 	case Ast_CallExpr:      return node->CallExpr.close;
 	case Ast_SelectorExpr:

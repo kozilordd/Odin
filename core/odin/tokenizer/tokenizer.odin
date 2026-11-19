@@ -786,6 +786,9 @@ scan :: proc(t: ^Tokenizer) -> Token {
 			if t.ch == '=' {
 				advance_rune(t)
 				kind = .Cmp_Eq
+			} else if t.ch == '>' {
+				advance_rune(t)
+				kind = .Pipe
 			}
 		case '~':
 			kind = .Xor

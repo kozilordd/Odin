@@ -3802,7 +3802,28 @@ parse_binary_expr :: proc(p: ^Parser, lhs: bool, prec_in: int) -> ^ast.Expr {
 				oe.y     = y
 
 				expr = oe
+			case .Pipe:
+				right := parse_binary_expr(p, false, prec+1)
+				if right == nil {
+					error(p, op.pos, "expected a call expression on the right-hand side of the binary operator")
+					expr = right
+				}
 
+				call, ok := expr.derived.(^ast.Call_Expr)
+				if !ok {
+					error(p, op.pos, "expected a call expression on the right-hand side of the binary operator")
+					expr = right
+				}
+				else {
+					newLen := call.args=>len() + 1
+					newArgs := make([]^ast.Expr, newLen)
+					
+					newArgs[0] = expr
+					copy(newArgs[1:], call.args)
+					call.args = newArgs
+
+					expr = call
+				}					
 			case:
 				right := parse_binary_expr(p, false, prec+1)
 				if right == nil {

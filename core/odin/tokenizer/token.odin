@@ -69,6 +69,8 @@ Token_Kind :: enum u32 {
 
 		Mul_Mul,  // **
 
+		Pipe,     // =>
+
 	B_Assign_Op_Begin,
 		Add_Eq,     // +=
 		Sub_Eq,     // -=
@@ -203,6 +205,8 @@ tokens := [Token_Kind.COUNT]string {
 	"||",
 
 	"**",
+
+	"=>",
 
 	"",
 	"+=",

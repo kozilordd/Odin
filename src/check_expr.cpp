@@ -13154,7 +13154,8 @@ end:;
 // NOTE(kozi): Kept here in case a proper impl happens
 gb_internal ExprKind check_pipe_expr(CheckerContext *c, Operand *o, Ast *node, Type *type_hint)
 {
-	GB_PANIC("Unreachable")
+	GB_PANIC("Unreachable");
+	return {};
 }
 
 gb_internal ExprKind check_selector_call_expr(CheckerContext *c, Operand *o, Ast *node, Type *type_hint) {

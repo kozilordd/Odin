@@ -2268,6 +2268,20 @@ gb_internal SubstResult subst_unify(CheckerContext *c, Type *pattern, Type *sour
 		}
 		return subst_unify(c, pattern->EnumeratedArray.elem, source->EnumeratedArray.elem, subst);
 	}
+	case Type_UnionEnumeratedArray: {
+		if (source->kind != Type_UnionEnumeratedArray) {
+			return Subst_NoMatch;
+		}
+		if (pattern->UnionEnumeratedArray.op || source->UnionEnumeratedArray.op) {
+			return Subst_Unhandled;
+		}
+
+		SubstResult ir = subst_unify(c, pattern->UnionEnumeratedArray.index, source->UnionEnumeratedArray.index, subst);
+		if (ir != Subst_Matched) {
+			return ir;
+		}
+		return subst_unify(c, pattern->UnionEnumeratedArray.index, source->UnionEnumeratedArray.index, subst);
+	}
 	case Type_BitSet: {
 		if (source->kind != Type_BitSet) {
 			return Subst_NoMatch;
@@ -2488,6 +2502,12 @@ gb_internal Type *subst_apply(CheckerContext *c, Type *pattern, Type *source, Po
 			pattern->EnumeratedArray.min_value, pattern->EnumeratedArray.max_value,
 			pattern->EnumeratedArray.count, pattern->EnumeratedArray.op);
 		r->EnumeratedArray.is_sparse = pattern->EnumeratedArray.is_sparse; // alloc defaults this to false
+		return r;
+	}
+	case Type_UnionEnumeratedArray: {
+		Type *elem  = subst_apply(c, pattern->UnionEnumeratedArray.elem,  source->UnionEnumeratedArray.elem,  subst);
+		Type *index = subst_apply(c, pattern->UnionEnumeratedArray.index, source->UnionEnumeratedArray.index, subst);
+		Type *r = alloc_type_union_enumerated_array(elem, index, pattern->UnionEnumeratedArray.count, pattern->UnionEnumeratedArray.op);
 		return r;
 	}
 	case Type_Matrix: {
@@ -4308,7 +4328,7 @@ gb_internal i64 check_array_count(CheckerContext *ctx, Operand *o, Ast *e) {
 				return 0;
 			}
 		}
-		if (is_type_enum(ot)) {
+		if (is_type_enum(ot) || is_type_union(ot)) {
 			return -1;
 		}
 	}
@@ -5057,6 +5077,29 @@ gb_internal void check_array_type_internal(CheckerContext *ctx, Ast *e, Type **t
 
 			*type = t;
 
+			return;
+		} else if (o.mode == Addressing_Type && is_type_union(o.type)) {
+			Type *index = o.type;
+			Type *bt = base_type(index);
+			GB_ASSERT(bt->kind == Type_Union);
+
+			i64 variant_count = bt->Union.variants.count;
+			if (bt->Union.kind == UnionType_Normal) {
+				variant_count += 1;
+			}
+			Type *t = alloc_type_union_enumerated_array(elem, index, variant_count, Token_Invalid);
+			
+			if (at->tag != nullptr) {
+				GB_ASSERT(at->tag->kind == Ast_BasicDirective);
+				String name = at->tag->BasicDirective.name.string;
+				if (name == "sparse") {
+					error(at->tag, "Union enumerated arrays can't be '#sparse'");
+				} else {
+					error(at->tag, "Invalid tag applied to an enumerated array, got #%.*s", LIT(name));
+				}
+			}
+
+			*type = t;
 			return;
 		}
 

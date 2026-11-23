@@ -254,6 +254,12 @@ struct TypeNamed {
 		TokenKind op;                                     \
 		bool is_sparse;                                   \
 	})                                                        \
+	TYPE_KIND(UnionEnumeratedArray, struct {                  \
+		Type *elem;                                       \
+		Type *index;                                      \
+		i64 count;                                        \
+		TokenKind op;									  \
+	})                                                    \
 	TYPE_KIND(Slice,   struct { Type *elem; })                \
 	TYPE_KIND(DynamicArray, struct { Type *elem; })           \
 	TYPE_KIND(FixedCapacityDynamicArray, struct {             \
@@ -1184,6 +1190,14 @@ gb_internal Type *alloc_type_enumerated_array(Type *elem, Type *index, ExactValu
 	return t;
 }
 
+gb_internal Type *alloc_type_union_enumerated_array(Type *elem, Type *index, isize count, TokenKind op){
+	Type *t = alloc_type(Type_UnionEnumeratedArray);
+	t->UnionEnumeratedArray.elem  = elem;
+	t->UnionEnumeratedArray.index = index;
+	t->UnionEnumeratedArray.count = count;
+	t->UnionEnumeratedArray.op    = op;
+	return t;
+}
 
 gb_internal Type *alloc_type_slice(Type *elem) {
 	Type *t = alloc_type(Type_Slice);
@@ -1643,6 +1657,11 @@ gb_internal bool is_type_enumerated_array(Type *t) {
 	t = base_type(t);
 	if (t == nullptr) { return false; }
 	return t->kind == Type_EnumeratedArray;
+}
+gb_internal bool is_type_union_enumerated_array(Type *t) {
+	t = base_type(t);
+	if (t == nullptr) { return false; }
+	return t->kind == Type_UnionEnumeratedArray;
 }
 gb_internal bool is_type_matrix(Type *t) {
 	t = base_type(t);
@@ -5773,6 +5792,12 @@ gb_internal gbString write_type_to_string(gbString str, Type *type, bool shortha
 		str = write_type_to_string(str, type->EnumeratedArray.elem, shorthand, allow_polymorphic);
 		break;
 
+	case Type_UnionEnumeratedArray:
+		str = gb_string_append_rune(str, '[');
+		str = write_type_to_string(str, type->UnionEnumeratedArray.index, shorthand, allow_polymorphic);
+		str = gb_string_append_rune(str, ']');
+		str = write_type_to_string(str, type->UnionEnumeratedArray.elem, shorthand, allow_polymorphic);
+		break;
 	case Type_Array:
 		str = gb_string_appendc(str, gb_bprintf("[%lld]", cast(long long)type->Array.count));
 		str = write_type_to_string(str, type->Array.elem, shorthand, allow_polymorphic);

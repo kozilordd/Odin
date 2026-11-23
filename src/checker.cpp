@@ -4112,7 +4112,7 @@ gb_internal void init_preload(Checker *c) {
 	init_core_objc_c(c);
 }
 
-gb_internal void check_expr_with_type_hint(CheckerContext *c, Operand *o, Ast *e, Type *t);
+gb_internal void check_expr_with_type_hint(CheckerContext *c, Operand *o, Ast *e, Type *t, bool allow_addr_type = false);
 
 gb_internal ExactValue check_decl_attribute_value(CheckerContext *c, Ast *value, Type *type_hint = nullptr) {
 	ExactValue ev = {};

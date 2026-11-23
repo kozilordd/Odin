@@ -76,7 +76,7 @@ gb_internal void     check_multi_expr_or_type       (CheckerContext *c, Operand 
 gb_internal void     check_multi_expr_with_type_hint(CheckerContext *c, Operand *o, Ast *e, Type *type_hint);
 gb_internal void     check_expr_or_type             (CheckerContext *c, Operand *operand, Ast *expression, Type *type_hint);
 gb_internal ExprKind check_expr_base                (CheckerContext *c, Operand *operand, Ast *expression, Type *type_hint);
-gb_internal void     check_expr_with_type_hint      (CheckerContext *c, Operand *o, Ast *e, Type *t);
+gb_internal void     check_expr_with_type_hint      (CheckerContext *c, Operand *o, Ast *e, Type *t, bool accept_type_addr);
 gb_internal Type *   check_type                     (CheckerContext *c, Ast *expression);
 gb_internal Type *   check_type_expr                (CheckerContext *c, Ast *expression, Type *named_type);
 gb_internal Type *   make_optional_ok_type          (Type *value, bool typed=true);
@@ -5838,7 +5838,8 @@ gb_internal void convert_to_typed(CheckerContext *c, Operand *operand, Type *tar
 
 gb_internal bool check_index_value(CheckerContext *c, Operand *indexable_operand, Type *main_type, bool open_range, Ast *index_value, i64 max_count, i64 *value, Type *type_hint=nullptr) {
 	Operand operand = {Addressing_Invalid};
-	check_expr_with_type_hint(c, &operand, index_value, type_hint);
+	bool allow_types = is_type_union_enumerated_array(main_type);
+	check_expr_with_type_hint(c, &operand, index_value, type_hint, allow_types);
 	if (operand.mode == Addressing_Invalid) {
 		if (value) *value = 0;
 		// NOTE(bill): return true here to propagate the errors better
@@ -5856,10 +5857,34 @@ gb_internal bool check_index_value(CheckerContext *c, Operand *indexable_operand
 	}
 
 	if (type_hint != nullptr) {
-		if (!check_is_assignable_to(c, &operand, type_hint)) {
+		bool is_invalid = false;
+		bool is_type_addressed = false;
+
+		if (allow_types && operand.mode == Addressing_Type) {
+			is_type_addressed = true;
+			operand.mode = Addressing_Constant;
+		}	
+
+		if (allow_types) {
+			if (is_type_addressed) {
+				// NOTE(Kozi): Type expressions MUST be variants of the union
+				// The union type itself is invalid
+				is_invalid = base_type(operand.type) == base_type(type_hint) || !check_is_assignable_to(c, &operand, type_hint); 
+			} else {
+				is_invalid = !check_is_assignable_to(c, &operand, type_hint);
+			}
+		} else if ( !check_is_assignable_to(c, &operand, type_hint)) {
+			is_invalid = true;
+		}
+
+		if (is_invalid) {
 			gbString expr_str = expr_to_string(operand.expr);
 			gbString index_type_str = type_to_string(type_hint);
-			error(operand.expr, "Index '%s' must be an enum of type '%s'", expr_str, index_type_str);
+			if (is_type_union(type_hint)) {
+				error(operand.expr, "Index '%s' must be a union of type '%s', or a type expression of its variant", expr_str, index_type_str);
+			} else {
+				error(operand.expr, "Index '%s' must be an enum of type '%s'", expr_str, index_type_str);
+			}
 			gb_string_free(index_type_str);
 			gb_string_free(expr_str);
 			if (value) *value = 0;
@@ -10268,7 +10293,7 @@ gb_internal ExprKind check_call_expr(CheckerContext *c, Operand *operand, Ast *c
 }
 
 
-gb_internal void check_expr_with_type_hint(CheckerContext *c, Operand *o, Ast *e, Type *t) {
+gb_internal void check_expr_with_type_hint(CheckerContext *c, Operand *o, Ast *e, Type *t, bool allow_addr_type) {
 	check_expr_base(c, o, e, t);
 	check_not_tuple(c, o);
 	char const *err_str = nullptr;
@@ -10277,7 +10302,9 @@ gb_internal void check_expr_with_type_hint(CheckerContext *c, Operand *o, Ast *e
 		err_str = "used as a value";
 		break;
 	case Addressing_Type:
-		if (t == nullptr || !is_type_typeid(t)) {
+		// NOTE(Kozi): Need the exception for union enumerated arrays
+		// since they accept const type expressions as "values"
+		if (!allow_addr_type && (t == nullptr || !is_type_typeid(t))) {
 			err_str = "is not an expression but a type, in this context it is ambiguous";
 		}
 		break;
@@ -10357,6 +10384,16 @@ gb_internal bool check_set_index_data(Operand *o, Type *t, bool indirection, i64
 			o->mode = Addressing_Value;
 		}
 		o->type = t->EnumeratedArray.elem;
+		return true;
+
+	case Type_UnionEnumeratedArray:
+		if (indirection) {
+			o->mode = Addressing_Variable;
+		} else if (o->mode != Addressing_Variable &&
+				   o->mode != Addressing_Constant) {
+			o->mode = Addressing_Value;
+		}
+		o->type = t->UnionEnumeratedArray.elem;
 		return true;
 
 	case Type_Matrix:
@@ -12701,6 +12738,202 @@ gb_internal ExprKind check_compound_literal(CheckerContext *c, Operand *o, Ast *
 		break;
 	}
 
+	case Type_UnionEnumeratedArray: {
+		Type *elem_type = t->UnionEnumeratedArray.elem;
+		Type *index_type = t->UnionEnumeratedArray.index;
+		String context_name = str_lit("union enumerated array literal");
+
+		
+		gbString index_type_str = type_to_string(index_type);
+		defer (gb_string_free(index_type_str));
+
+		GB_ASSERT(is_type_union(index_type));
+		
+			
+		Type *bet = base_type(elem_type);
+		if (!elem_type_can_be_constant(bet)) {
+			is_constant = false;
+		}
+
+		if (bet == t_invalid){
+			break;
+		}
+		bool is_partial = cl->tag && (cl->tag->BasicDirective.name.string == "partial");
+
+		// HACK(Kozi): nil is not an actual type but we want to treat it like one
+		// So we cheat!
+		Type nil_type = {};
+
+		Type *base_index_type = base_type(index_type);
+		bool index_is_no_nil = base_index_type->Union.kind == UnionType_no_nil;
+
+		typedef struct{} UNIT;
+		OrderedInsertPtrMap<Type *, UNIT> allowed = {};
+		map_init(&allowed, 16);
+		isize valid_variants = 0;
+		isize visited_variants = 0;
+		defer (map_destroy(&allowed));
+
+		if (!index_is_no_nil) map_set(&allowed, &nil_type, {});
+		auto union_variants = base_index_type->Union.variants;
+		for (Type *variant : union_variants) 
+		{
+			map_set(&allowed, variant, {});
+		}
+		PtrSet<Type *> seen = {};
+		ptr_set_init(&seen);
+		defer (ptr_set_destroy(&seen));		
+		
+		if (cl->elems.count > 0 && cl->elems[0]->kind == Ast_FieldValue)
+		{	
+			for (Ast *elem : cl->elems) {
+				if (elem->kind != Ast_FieldValue) {
+					error(elem, "Mixture of 'field = value' and value elements in a literal is not allowed");
+					continue;
+				}
+				ast_node(fv, FieldValue, elem);
+
+				if (is_ast_range(fv->field)) {
+					error(elem, "Ranges are not allowed within union enumerated arrays");
+					continue;
+				}
+
+				
+				Type *field_type;
+				gbString field_type_str;
+				bool free_str = false;
+				defer (if (free_str) {gb_string_free(field_type_str);});
+				
+				bool field_is_nil = fv->field->kind == Ast_Ident && fv->field->Ident.token.string == "nil";
+				if (field_is_nil) {		
+					field_type = &nil_type;
+					field_type_str = "nil";
+					free_str = false;				
+				} else {
+					field_type = check_type_expr(c, fv->field, base_index_type);
+					field_type_str = type_to_string(field_type);
+					free_str = true;				
+				}
+
+				bool is_valid = true;
+				if (map_get(&allowed, field_type) == nullptr)
+				{
+					is_valid = false;
+					gbString union_str = type_to_string(index_type);
+					defer (gb_string_free(union_str));
+					error(fv->field, "Field of type '%s' is not a variant of the index type '%s'",
+						  field_type_str,
+						  union_str);
+				}
+				if (ptr_set_update(&seen, field_type))
+				{
+					is_valid = false;
+					error(fv->field, "Duplicate field of type %s", field_type_str);
+				}
+				if (is_valid) valid_variants += 1;
+				Operand operand = {};
+				check_expr_with_type_hint(c, &operand, fv->value, elem_type);
+				check_compound_literal_elem_fits(c, &operand, elem_type, type, "element", context_name);
+				check_assignment(c, &operand, elem_type, context_name);
+			}
+		} else {
+			isize index = 0;
+			for (; index < cl->elems.count; index++) {
+				Ast *e = cl->elems[index];
+
+				if (e == nullptr) {
+					error(node, "Invalid literal element");
+					continue;
+				}
+				
+				if (e->kind == Ast_FieldValue) {
+					error(e, "Mixture of 'field = value' and value elements in a literal is not allowed");
+					continue;
+				}
+				
+				Operand operand = {};
+				check_expr_with_type_hint(c, &operand, e, elem_type);
+				check_compound_literal_elem_fits(c, &operand, elem_type, type, "element", context_name);
+				check_assignment(c, &operand, elem_type, context_name);
+				
+				if (is_constant) {
+					is_constant = check_is_operand_compound_lit_constant(c, &operand, elem_type);
+				}
+			}
+			visited_variants = index;
+		}
+
+		bool was_error = false;
+		if (cl->elems.count > 0 && cl->elems[0]->kind != Ast_FieldValue) {
+			if (!is_partial && visited_variants != allowed.count) {
+				error(node, "Expected %lld values for this union enumerated array literal, got %lld",
+					 cast(long long)t->UnionEnumeratedArray.count, cast(long long)visited_variants);
+				was_error = true;
+			} else {
+				error(node, "Union enumerated array literals must only have 'field = value' elements, bare elements are now allowed");
+				was_error = true;
+			}
+		}
+		
+
+		if (cl->elems.count > 0 && !was_error && !is_partial) {
+			TEMPORARY_ALLOCATOR_GUARD();
+
+			Type *et = base_type(index_type);
+			GB_ASSERT(et->kind == Type_Union);
+
+			auto unhandled = array_make<Type *>(temporary_allocator(), 0, allowed.count);
+			
+			for (auto entry : allowed) {
+				Type *ut = entry.key;
+				if (!ptr_set_exists(&seen, ut)) array_add(&unhandled, ut);
+			}
+
+			if (unhandled.count > 0) {
+				ERROR_BLOCK();
+
+				if (unhandled.count == 1) {
+					Type *ut = unhandled[0]; 
+					gbString str = {};
+					bool should_free = false;
+					defer (if (should_free) {gb_string_free(str);});
+					if (ut == &nil_type) {
+						str = "nil";
+						should_free = false;
+					} else {
+						str = type_to_string(ut);
+						should_free = true;
+					}
+					error_no_newline(node, "Unhandled union enumerated array case: %s", str);
+				} else {
+					error(node, "Unhandled union enumerated array cases:");
+					for_array(i, unhandled) {
+						Type *ut = unhandled[i]; 
+						gbString str = {};
+						bool should_free = false;
+						defer (if (should_free) {gb_string_free(str);});
+						if (ut == &nil_type) {
+							str = "nil";
+							should_free = false;
+						} else {
+							str = type_to_string(ut);
+							should_free = true;
+						}
+
+						error_line("\t%s\n", str);
+					}
+				}
+
+				if (!build_context.terse_errors) {
+					error_line("\n");
+					error_line("\tSuggestion: Was '#partial %s{...}' wanted?\n", type_to_string(type));
+				}
+			}
+		}
+
+		break;
+	}
+
 	case Type_Basic: {
 		if (!is_type_any(t)) {
 			if (cl->elems.count != 0) {
@@ -13339,6 +13572,8 @@ gb_internal ExprKind check_index_expr(CheckerContext *c, Operand *o, Ast *node, 
 			// Okay
 		} else if (is_type_enumerated_array(t)) {
 			// Okay
+		} else if (is_type_union_enumerated_array(t)){
+			// Okay
 		} else if (is_type_fixed_capacity_dynamic_array(t)) {
 			// Okay
 		} else if (is_type_string(t)) {
@@ -13385,6 +13620,10 @@ gb_internal ExprKind check_index_expr(CheckerContext *c, Operand *o, Ast *node, 
 		Type *bt = base_type(t);
 		GB_ASSERT(bt->kind == Type_EnumeratedArray);
 		index_type_hint = bt->EnumeratedArray.index;
+	} else if (is_type_union_enumerated_array(t)) {
+		Type *bt = base_type(t);
+		GB_ASSERT(bt->kind == Type_UnionEnumeratedArray);
+		index_type_hint = bt->UnionEnumeratedArray.index;
 	}
 
 	i64 index = 0;

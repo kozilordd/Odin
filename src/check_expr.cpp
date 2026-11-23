@@ -13629,6 +13629,13 @@ gb_internal ExprKind check_index_expr(CheckerContext *c, Operand *o, Ast *node, 
 	i64 index = 0;
 	bool ok = check_index_value(c, o, t, false, ie->index, max_count, &index, index_type_hint);
 	if (is_const) {
+		bool is_union_arr = is_type_union_enumerated_array(t);
+		if (is_union_arr) {
+			Type *expr_type = base_type(type_and_value_of_expr(ie->index).type);
+			if (is_type_untyped_nil(expr_type)) {
+				return kind;
+			}
+		}
 		if (index < 0) {
 			ERROR_BLOCK();
 			gbString str = expr_to_string(o->expr);
@@ -13640,7 +13647,7 @@ gb_internal ExprKind check_index_expr(CheckerContext *c, Operand *o, Ast *node, 
 			o->mode = Addressing_Invalid;
 			o->expr = node;
 			return kind;
-		} else if (ok && !is_type_matrix(t)) {
+		} else if (ok && !is_union_arr && !is_type_matrix(t)) {
 			TypeAndValue tav = type_and_value_of_expr(ie->expr);
 			ExactValue value = tav.value;
 			o->mode = Addressing_Constant;

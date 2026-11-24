@@ -3462,6 +3462,11 @@ gb_internal bool are_types_identical_internal(Type *x, Type *y, bool check_tuple
 		       are_types_identical_internal(x->EnumeratedArray.index, y->EnumeratedArray.index, check_tuple_names) &&
 		       are_types_identical_internal(x->EnumeratedArray.elem,  y->EnumeratedArray.elem, check_tuple_names);
 
+	case Type_UnionEnumeratedArray:
+		return x->UnionEnumeratedArray.count == y->UnionEnumeratedArray.count &&
+			   are_types_identical_internal(x->UnionEnumeratedArray.index, y->UnionEnumeratedArray.index, check_tuple_names) &&
+			   are_types_identical_internal(x->UnionEnumeratedArray.elem, y->UnionEnumeratedArray.elem, check_tuple_names);
+	
 	case Type_Array:
 		return (x->Array.count == y->Array.count) && are_types_identical_internal(x->Array.elem, y->Array.elem, check_tuple_names);
 

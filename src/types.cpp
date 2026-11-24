@@ -4751,6 +4751,17 @@ gb_internal i64 type_align_of_internal(Type *t, TypePath *path) {
 		return align;
 	}
 
+	case Type_UnionEnumeratedArray: {
+		Type *elem = t->UnionEnumeratedArray.elem;
+		bool pop = type_path_push(path, elem);
+		if (path->failure) {
+			return FAILURE_ALIGNMENT;
+		}
+		i64 align = type_align_of_internal(elem, path);
+		if (pop) type_path_pop(path);
+		return align;
+	}
+
 	case Type_DynamicArray:
 		// data, len, cap, allocator
 		return build_context.int_size;
@@ -5040,6 +5051,21 @@ gb_internal i64 type_size_of_internal(Type *t, TypePath *path) {
 			return FAILURE_SIZE;
 		}
 		size  = type_size_of_internal( t->EnumeratedArray.elem, path);
+		alignment = align_formula(size, align);
+		return alignment*(count-1) + size;
+	} break;
+
+	case Type_UnionEnumeratedArray: {
+		i64 count, align, size, alignment;
+		count = t->UnionEnumeratedArray.count;
+		if (count == 0) {
+			return 0;
+		}
+		align = type_align_of_internal(t->UnionEnumeratedArray.elem, path);
+		if (path->failure) {
+			return FAILURE_SIZE;
+		}
+		size = type_size_of_internal(t->UnionEnumeratedArray.elem, path);
 		alignment = align_formula(size, align);
 		return alignment*(count-1) + size;
 	} break;

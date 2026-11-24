@@ -895,6 +895,12 @@ gb_internal void write_type_to_canonical_string(TypeWriter *w, Type *type) {
 		type_writer_appendb(w, ']');
 		write_type_to_canonical_string(w, type->EnumeratedArray.elem);
 		return;
+	case Type_UnionEnumeratedArray:
+		type_writer_appendb(w, '[');
+		write_type_to_canonical_string(w, type->UnionEnumeratedArray.index);
+		type_writer_appendb(w, ']');
+		write_type_to_canonical_string(w, type->UnionEnumeratedArray.elem);
+		return;
 	case Type_Array:
 		type_writer_append_fmt(w, "[%lld]", cast(long long)type->Array.count);
 		write_type_to_canonical_string(w, type->Array.elem);

@@ -1044,7 +1044,14 @@ gb_internal void check_unroll_range_stmt(CheckerContext *ctx, Ast *node, u32 mod
 				}
 				inline_for_depth = exact_value_i64(t->EnumeratedArray.count);
 				break;
-
+			case Type_UnionEnumeratedArray:
+				val0 = t->UnionEnumeratedArray.elem;
+				val1 = t->UnionEnumeratedArray.index;
+				if (unroll_count > 0) {
+					error(node, "#unroll(%lld) does not support union enumerated arrays", cast(long long)unroll_count);
+				}
+				inline_for_depth = exact_value_i64(t->EnumeratedArray.count);
+				break;
 			case Type_Slice:
 				if (unroll_count > 0) {
 					val0 = t->Slice.elem;
@@ -1967,6 +1974,11 @@ gb_internal void check_range_stmt(CheckerContext *ctx, Ast *node, u32 mod_flags)
 				array_add(&vals, t->EnumeratedArray.elem);
 				array_add(&vals, t->EnumeratedArray.index);
 				break;
+
+			case Type_UnionEnumeratedArray:
+				is_possibly_addressable = operand.mode == Addressing_Variable || is_ptr;
+				array_add(&vals, t->UnionEnumeratedArray.elem);
+				array_add(&vals, t->UnionEnumeratedArray.index);
 
 			case Type_Array:
 				// for #soa container with array element type, the element carries Addressing_SoaVariable,

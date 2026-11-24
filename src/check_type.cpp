@@ -5084,7 +5084,7 @@ gb_internal void check_array_type_internal(CheckerContext *ctx, Ast *e, Type **t
 			GB_ASSERT(bt->kind == Type_Union);
 
 			i64 variant_count = bt->Union.variants.count;
-			if (bt->Union.kind == UnionType_Normal) {
+			if (bt->Union.kind != UnionType_no_nil) {
 				variant_count += 1;
 			}
 			Type *t = alloc_type_union_enumerated_array(elem, index, variant_count, Token_Invalid);

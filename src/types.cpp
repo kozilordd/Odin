@@ -1874,6 +1874,8 @@ gb_internal Type *base_array_type(Type *t) {
 		return bt->Array.elem;
 	} else if (is_type_enumerated_array(bt)) {
 		return bt->EnumeratedArray.elem;
+	} else if (is_type_union_enumerated_array(bt)) {
+		return bt->UnionEnumeratedArray.elem;
 	} else if (is_type_simd_vector(bt)) {
 		return bt->SimdVector.elem;
 	} else if (is_type_fixed_capacity_dynamic_array(bt)) {
@@ -1988,7 +1990,7 @@ gb_internal bool is_type_u16_multi_ptr(Type *t) {
 
 
 gb_internal bool is_type_array_like(Type *t) {
-	return is_type_array(t) || is_type_enumerated_array(t);
+	return is_type_array(t) || is_type_enumerated_array(t) || is_type_union_enumerated_array(t);
 }
 gb_internal i64 get_array_type_count(Type *t) {
 	Type *bt = base_type(t);
@@ -1996,6 +1998,8 @@ gb_internal i64 get_array_type_count(Type *t) {
 		return bt->Array.count;
 	} else if (bt->kind == Type_EnumeratedArray) {
 		return bt->EnumeratedArray.count;
+	} else if (bt->kind == Type_UnionEnumeratedArray) {
+		return bt->UnionEnumeratedArray.count;
 	} else if (bt->kind == Type_SimdVector) {
 		return bt->SimdVector.count;
 	}
@@ -2471,6 +2475,8 @@ gb_internal bool is_type_indexable(Type *t) {
 	case Type_MultiPointer:
 		return true;
 	case Type_EnumeratedArray:
+		return true;
+	case Type_UnionEnumeratedArray:
 		return true;
 	case Type_Matrix:
 		return true;

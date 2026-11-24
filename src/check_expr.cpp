@@ -414,7 +414,7 @@ gb_internal bool poly_specialization_shape_mismatch(Type *s, Type *o, isize dept
 	if (bs == nullptr || bo == nullptr || bs->kind == Type_Generic || bo->kind == Type_Generic) {
 		return false;
 	}
-	if (bs->kind == Type_Array && bo->kind == Type_EnumeratedArray) {
+	if (bs->kind == Type_Array && (bo->kind == Type_EnumeratedArray || bo->kind == Type_UnionEnumeratedArray)) {
 		// `[$N]$E` can bind to an enumerated array; leave it to subst_unify
 		return false;
 	}
@@ -506,6 +506,7 @@ gb_internal u64 type_identity_hash(Type *t, isize depth) {
 	case Type_DynamicArray:              mix(type_identity_hash(t->DynamicArray.elem,              depth+1)); break;
 	case Type_FixedCapacityDynamicArray: mix(type_identity_hash(t->FixedCapacityDynamicArray.elem, depth+1)); break;
 	case Type_EnumeratedArray:           mix(type_identity_hash(t->EnumeratedArray.elem,           depth+1)); break;
+	case Type_UnionEnumeratedArray:      mix(type_identity_hash(t->UnionEnumeratedArray.elem,      depth+1)); break;
 	case Type_Matrix:                    mix(type_identity_hash(t->Matrix.elem,                    depth+1)); break;
 
 	case Type_Array:
@@ -3608,6 +3609,9 @@ gb_internal void add_comparison_procedures_for_fields(CheckerContext *c, Type *t
 		break;
 	case Type_EnumeratedArray:
 		add_comparison_procedures_for_fields(c, t->EnumeratedArray.elem);
+		break;
+	case Type_UnionEnumeratedArray:
+		add_comparison_procedures_for_fields(c, t->UnionEnumeratedArray.elem);
 		break;
 	}
 }
@@ -10387,6 +10391,7 @@ gb_internal bool check_set_index_data(Operand *o, Type *t, bool indirection, i64
 		return true;
 
 	case Type_UnionEnumeratedArray:
+		*max_count = t->UnionEnumeratedArray.count;
 		if (indirection) {
 			o->mode = Addressing_Variable;
 		} else if (o->mode != Addressing_Variable &&

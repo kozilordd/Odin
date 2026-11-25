@@ -12765,9 +12765,7 @@ gb_internal ExprKind check_compound_literal(CheckerContext *c, Operand *o, Ast *
 		}
 		bool is_partial = cl->tag && (cl->tag->BasicDirective.name.string == "partial");
 
-		// HACK(Kozi): nil is not an actual type but we want to treat it like one
-		// So we cheat!
-		Type nil_type = {};
+		Type* nil_type = t_untyped_nil;
 
 		Type *base_index_type = base_type(index_type);
 		bool index_is_no_nil = base_index_type->Union.kind == UnionType_no_nil;
@@ -12779,7 +12777,7 @@ gb_internal ExprKind check_compound_literal(CheckerContext *c, Operand *o, Ast *
 		isize visited_variants = 0;
 		defer (map_destroy(&allowed));
 
-		if (!index_is_no_nil) map_set(&allowed, &nil_type, {});
+		if (!index_is_no_nil) map_set(&allowed, nil_type, {});
 		auto union_variants = base_index_type->Union.variants;
 		for (Type *variant : union_variants) 
 		{
@@ -12811,7 +12809,7 @@ gb_internal ExprKind check_compound_literal(CheckerContext *c, Operand *o, Ast *
 				
 				bool field_is_nil = fv->field->kind == Ast_Ident && fv->field->Ident.token.string == "nil";
 				if (field_is_nil) {		
-					field_type = &nil_type;
+					field_type = nil_type;
 					field_type_str = "nil";
 					free_str = false;				
 				} else {
@@ -12902,7 +12900,7 @@ gb_internal ExprKind check_compound_literal(CheckerContext *c, Operand *o, Ast *
 					gbString str = {};
 					bool should_free = false;
 					defer (if (should_free) {gb_string_free(str);});
-					if (ut == &nil_type) {
+					if (ut == nil_type) {
 						str = "nil";
 						should_free = false;
 					} else {
@@ -12917,7 +12915,7 @@ gb_internal ExprKind check_compound_literal(CheckerContext *c, Operand *o, Ast *
 						gbString str = {};
 						bool should_free = false;
 						defer (if (should_free) {gb_string_free(str);});
-						if (ut == &nil_type) {
+						if (ut == nil_type) {
 							str = "nil";
 							should_free = false;
 						} else {

@@ -5721,6 +5721,7 @@ gb_internal Type *type_internal_index(Type *t, isize index) {
 
 	case Type_Array:           return bt->Array.elem;
 	case Type_EnumeratedArray: return bt->EnumeratedArray.elem;
+	case Type_UnionEnumeratedArray: return bt->UnionEnumeratedArray.elem;
 	case Type_SimdVector:      return bt->SimdVector.elem;
 	case Type_Slice:
 		{
@@ -6122,4 +6123,28 @@ gb_internal gbString type_to_string_polymorphic(Type *type) {
 
 gb_internal gbString type_to_string_shorthand(Type *type) {
 	return type_to_string(type, true);
+}
+
+gb_internal i64 union_enumerated_array_variant_index(Type *t, Type *v) {
+	t = base_type(t);
+	GB_ASSERT(t->kind == Type_UnionEnumeratedArray);
+	int i = 0;
+	if (t->kind != UnionType_no_nil) {
+		if (is_type_untyped_nil(v)) {
+			return 0;
+		}
+		else {
+			i = 1;
+		}
+	}
+	Type *bi = base_type(t->UnionEnumeratedArray.index);
+	for (Type *variant : bi->Union.variants) {
+		if (are_types_identical(v, variant)) {
+			return i;
+		}
+		i++;
+	}
+
+	GB_PANIC("v is not a variant of type t");
+	return -1;
 }

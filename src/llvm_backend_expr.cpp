@@ -3677,8 +3677,9 @@ gb_internal lbValue lb_emit_comp(lbProcedure *p, TokenKind op_kind, lbValue left
 
 		i32 count = 0;
 		switch (tl->kind) {
-		case Type_Array:           count = cast(i32)tl->Array.count;           break;
-		case Type_EnumeratedArray: count = cast(i32)tl->EnumeratedArray.count; break;
+		case Type_Array:                count = cast(i32)tl->Array.count;                break;
+		case Type_EnumeratedArray:      count = cast(i32)tl->EnumeratedArray.count;      break;
+		case Type_UnionEnumeratedArray: count = cast(i32)tl->UnionEnumeratedArray.count; break;
 		}
 
 		if (inline_array_arith) {
@@ -5191,6 +5192,7 @@ gb_internal void lb_build_addr_compound_lit_populate(lbProcedure *p, Slice<Ast *
 	switch (bt->kind) {
 	case Type_Array:           et = bt->Array.elem;           break;
 	case Type_EnumeratedArray: et = bt->EnumeratedArray.elem; break;
+	case Type_UnionEnumeratedArray: et = bt->EnumeratedArray.elem; break;
 	case Type_Slice:           et = bt->Slice.elem;           break;
 	case Type_BitSet:          et = bt->BitSet.elem;          break;
 	case Type_DynamicArray:    et = bt->DynamicArray.elem;    break;
@@ -5527,6 +5529,40 @@ gb_internal lbAddr lb_build_addr_index_expr(lbProcedure *p, Ast *expr) {
 			lbValue len = lb_const_int(p->module, t_int, t->EnumeratedArray.count);
 			lb_emit_bounds_check(p, ast_token(ie->index), index, len);
 		}
+		return lb_addr(elem);
+	}
+
+	case Type_UnionEnumeratedArray: {
+		lbValue array = {};
+		array = lb_build_addr_ptr(p, ie->expr);
+		if (deref) {
+			array = lb_emit_load(p, array);
+		}
+
+		Type *index_type = t->UnionEnumeratedArray.index;
+		GB_ASSERT(is_type_union(index_type));
+
+		auto index_tv = type_and_value_of_expr(ie->index);
+		lbValue index = {};
+		 
+		if (is_type_untyped_nil(index_tv.type)) {
+			index = lb_const_int(p->module, t_int, 0);
+		} else if (index_tv.mode == Addressing_Type) {
+			i64 offset = union_enumerated_array_variant_index(t, index_tv.type);
+			index = lb_const_int(p->module, t_int, offset);			
+		} else {
+			GB_ASSERT(is_type_union(index_tv.type));
+			
+			index = lb_emit_union_tag_value(p, lb_build_expr(p, ie->index));
+			index = lb_emit_conv(p, index, t_int);
+		}
+		lbValue elem = lb_emit_array_ep(p, array, index);
+
+		if (index_tv.mode != Addressing_Type) {
+			lbValue len = lb_const_int(p->module, t_int, t->UnionEnumeratedArray.count);
+			lb_emit_bounds_check(p, ast_token(ie->index), index, len);
+		}
+
 		return lb_addr(elem);
 	}
 
@@ -6305,12 +6341,13 @@ gb_internal lbAddr lb_build_addr_compound_lit(lbProcedure *p, Ast *expr) {
 
 	Type *et = nullptr;
 	switch (bt->kind) {
-	case Type_Array:              et = bt->Array.elem;           break;
-	case Type_EnumeratedArray:    et = bt->EnumeratedArray.elem; break;
-	case Type_Slice:              et = bt->Slice.elem;           break;
-	case Type_BitSet:             et = bt->BitSet.elem;          break;
-	case Type_SimdVector:         et = bt->SimdVector.elem;      break;
-	case Type_Matrix:             et = bt->Matrix.elem;          break;
+	case Type_Array:                et = bt->Array.elem;                break;
+	case Type_EnumeratedArray:      et = bt->EnumeratedArray.elem;      break;
+	case Type_UnionEnumeratedArray: et = bt->UnionEnumeratedArray.elem; break;
+	case Type_Slice:                et = bt->Slice.elem;                break;
+	case Type_BitSet:               et = bt->BitSet.elem;               break;
+	case Type_SimdVector:           et = bt->SimdVector.elem;           break;
+	case Type_Matrix:               et = bt->Matrix.elem;               break;
 	case Type_FixedCapacityDynamicArray: et = bt->FixedCapacityDynamicArray.elem; break;
 	}
 
@@ -6594,6 +6631,24 @@ gb_internal lbAddr lb_build_addr_compound_lit(lbProcedure *p, Ast *expr) {
 			i64 index_offset = exact_value_to_i64(*bt->EnumeratedArray.min_value);
 			for_array(i, temp_data) {
 				i32 index = cast(i32)(temp_data[i].elem_index - index_offset);
+				temp_data[i].gep = lb_emit_array_epi(p, dst_ptr, index);
+			}
+
+			lb_build_addr_compound_lit_assign_array(p, temp_data);
+		}
+		break;
+	}
+	case Type_UnionEnumeratedArray: {
+		if (cl->elems.count > 0) {
+			lb_build_addr_compound_lit_store_constant(p, v, type, expr);
+
+			auto temp_data = array_make<lbCompoundLitElemTempData>(temporary_allocator(), 0, cl->elems.count);
+
+			lb_build_addr_compound_lit_populate(p, cl->elems, &temp_data, type);
+
+			lbValue dst_ptr = lb_addr_get_ptr(p, v);
+			for_array(i, temp_data) {
+				i32 index = cast(i32)temp_data[i].elem_index;
 				temp_data[i].gep = lb_emit_array_epi(p, dst_ptr, index);
 			}
 

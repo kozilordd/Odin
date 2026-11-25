@@ -1917,6 +1917,70 @@ gb_internal lbValue lb_const_value(lbModule *m, Type *type, ExactValue value, lb
 				res.value = lb_build_constant_array_values(m, type, elem_type, cast(isize)type->EnumeratedArray.count, values, cc);
 				return res;
 			}
+		} else if (is_type_union_enumerated_array(type)) {
+			ast_node(cl, CompoundLit, value.value_compound);
+			Type *elem_type = type->UnionEnumeratedArray.elem;
+			isize elem_count = cl->elems.count;
+			if (elem_count == 0 || !elem_type_can_be_constant(elem_type)) {
+				return lb_const_nil(m, original_type);
+			}
+			if (cl->elems[0]->kind == Ast_FieldValue) {
+				LLVMValueRef *values = gb_alloc_array(temporary_allocator(), LLVMValueRef, cast(isize)type->UnionEnumeratedArray.count);
+			
+				// NOTE(Kozi): This should probably be using a temp allocator?
+				// Sadly PtrMap/Set don't support custom allocators
+				PtrMap<Type *, i64> type_to_index = {};
+				map_init(&type_to_index);
+				defer(map_destroy(&type_to_index));
+
+				Type *bi = base_type(type->UnionEnumeratedArray.index);
+				{
+					i64 offset = 0;
+					if (bi->Union.kind != UnionType_no_nil) {
+						map_set(&type_to_index, t_untyped_nil, cast(i64)0);
+						offset = 1;
+					}
+
+					for (isize i = 0; i < bi->Union.variants.count; i++) {
+						map_set(&type_to_index, bi->Union.variants[i], i + offset);
+					}
+				}
+
+				isize value_index = 0;
+				for (i64 i = 0; i < type->UnionEnumeratedArray.count; i++) {
+					bool found = false;
+
+					for (isize j = 0; j < elem_count; j++) {
+						Ast *elem = cl->elems[j];
+						ast_node(fv, FieldValue, elem);
+						
+						Type *index_type = type_of_expr(fv->field);
+						bool field_is_nil = fv->field->kind == Ast_Ident && fv->field->Ident.token.string == "nil";
+
+						if (field_is_nil) {
+							index_type = t_untyped_nil;
+						}
+						i64 *val_ptr = map_get(&type_to_index, index_type);
+						GB_ASSERT(val_ptr);
+						i64 index = *val_ptr;
+						if (index == i) {
+							TypeAndValue tav = type_and_value_of_expr(fv->value);
+							LLVMValueRef val = lb_const_value(m, elem_type, tav.value, cc).value;
+							values[value_index++] = val;
+							found = true;
+							break;
+						}
+					}
+
+					if (!found) {
+						values[value_index++] = LLVMConstNull(lb_type(m, elem_type));
+					}
+				}
+				res.value = lb_build_constant_array_values(m, type, elem_type, cast(isize)type->UnionEnumeratedArray.count, values, cc);
+				return res;
+			} else {
+				GB_PANIC("Type enumerated arrays only support field initialisation");
+			}
 		} else if (is_type_fixed_capacity_dynamic_array(type)) {
 			ast_node(cl, CompoundLit, value.value_compound);
 			Type *elem_type = type->FixedCapacityDynamicArray.elem;

@@ -3279,6 +3279,7 @@ gb_internal LLVMTypeRef lb_type_internal(lbModule *m, Type *type) {
 			case Type_Pointer:
 			case Type_Array:
 			case Type_EnumeratedArray:
+			case Type_UnionEnumeratedArray:
 			case Type_Slice:
 			case Type_DynamicArray:
 			case Type_Map:
@@ -3354,6 +3355,13 @@ gb_internal LLVMTypeRef lb_type_internal(lbModule *m, Type *type) {
 	case Type_EnumeratedArray: {
 		m->internal_type_level += 1;
 		LLVMTypeRef t = llvm_array_type(lb_type(m, type->EnumeratedArray.elem), type->EnumeratedArray.count);
+		m->internal_type_level -= 1;
+		return t;
+	}
+
+	case Type_UnionEnumeratedArray: {
+		m->internal_type_level += 1;
+		LLVMTypeRef t = llvm_array_type(lb_type(m, type->UnionEnumeratedArray.elem), type->UnionEnumeratedArray.count);
 		m->internal_type_level -= 1;
 		return t;
 	}
